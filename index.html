@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#10243a">
+<meta name="description" content="Ferramentas profissionais para inspeção e controle de qualidade em pintura industrial.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<title>Coating Inspector</title>
+<style>
+:root{font-family:Inter,system-ui,Arial,sans-serif;color:#172638;background:#f2f5f8}
+*{box-sizing:border-box}body{margin:0}header{background:#10243a;color:white;padding:20px max(18px,calc((100% - 980px)/2));}
+header .brand{font-weight:800;letter-spacing:.08em;font-size:1.05rem}header p{margin:5px 0 0;color:#c4d2df;font-size:.9rem}
+main{max-width:980px;margin:22px auto;padding:0 14px 50px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+h1{font-size:1.45rem;margin:0 0 6px}.sub{color:#647487;margin:0 0 18px}
+.card{background:white;border:1px solid #dce4eb;border-radius:14px;padding:18px;margin:14px 0;box-shadow:0 3px 14px #10243a0a}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field label{display:block;font-size:.82rem;font-weight:700;color:#425469;margin-bottom:5px}
+input,select{width:100%;padding:11px 12px;border:1px solid #cbd6e0;border-radius:8px;font:inherit;background:white;min-width:0}
+input:focus,select:focus{outline:2px solid #8bb9dc;border-color:#367eaf}
+button{border:0;border-radius:9px;padding:11px 16px;font:inherit;font-weight:700;cursor:pointer}
+.primary{background:#176b9b;color:white}.secondary{background:#e8eef3;color:#24384b}.danger{background:#fce9e7;color:#9c3027}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.muted{color:#6b7b8b;font-size:.88rem}
+.notice{padding:12px;border-radius:9px;background:#fff4dc;color:#765313;font-size:.9rem;margin-top:10px}
+.result{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.metric{background:#f1f6f9;border-radius:10px;padding:13px}.metric small{display:block;color:#607487}.metric strong{font-size:1.35rem;display:block;margin-top:4px}
+.point{display:grid;grid-template-columns:90px repeat(3,minmax(0,1fr));gap:8px;align-items:center;margin:8px 0}.point b{font-size:.9rem}
+table{border-collapse:collapse;width:100%;font-size:.9rem}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid #e5ebf0}th{color:#53677a}
+.history-item{padding:12px 0;border-bottom:1px solid #e5ebf0}.history-item:last-child{border:0}
+.hidden{display:none!important}
+@media(max-width:620px){.grid{grid-template-columns:1fr}.result{grid-template-columns:1fr 1fr}.point{grid-template-columns:1fr 1fr 1fr}.point b{grid-column:1/-1}.card{padding:14px}header{padding:17px 16px}}
+</style>
+</head>
+<body>
+<header><div class="brand">COATING INSPECTOR</div><p>Ferramentas de inspeção e controle de qualidade</p></header>
+<main>
+<div class="top"><div><h1>DFT Calculator</h1><p class="sub">Cálculo de espessura de película seca — módulo 01</p></div><button class="secondary" id="installBtn" hidden>Instalar aplicativo</button></div>
+<section class="card">
+<h2>Identificação da inspeção</h2>
+<div class="grid">
+<div class="field"><label for="client">Cliente / Contrato</label><input id="client" placeholder="Cliente ou contrato"></div>
+<div class="field"><label for="op">OP / Material</label><input id="op" placeholder="Ordem de produção ou material"></div>
+<div class="field"><label for="tag">TAG / Spool</label><input id="tag" placeholder="Identificação"></div>
+<div class="field"><label for="date">Data</label><input id="date" type="date"></div>
+<div class="field"><label for="area">Área (m²)</label><input id="area" type="number" min="0.01" step="0.01" placeholder="Ex.: 250"></div>
+<div class="field"><label for="roughness">Rugosidade (µm)</label><input id="roughness" type="number" min="0" step="1" placeholder="Ex.: 75"></div>
+</div>
+<div id="sampling" class="muted" style="margin-top:12px">Informe a área para calcular a quantidade mínima de pontos.</div>
+<div id="roughNotice" class="notice hidden"></div>
+</section>
+<section class="card">
+<div class="top"><h2>Leituras por ponto</h2><span class="muted">3 leituras por ponto</span></div>
+<div id="points"><p class="muted">Informe uma área válida para gerar os pontos de medição.</p></div>
+<div class="toolbar"><button class="primary" id="calculate">Calcular DFT</button><button class="secondary" id="clear">Limpar formulário</button></div>
+</section>
+<section class="card hidden" id="resultCard">
+<h2>Resultado</h2>
+<div class="result">
+<div class="metric"><small>Média geral</small><strong id="avg">—</strong></div>
+<div class="metric"><small>Fator de redução (FR)</small><strong id="fr">—</strong></div>
+<div class="metric"><small>DFT final</small><strong id="final">—</strong></div>
+</div>
+<p class="muted" id="resultNote"></p>
+<div class="toolbar"><button class="primary" id="save">Salvar no histórico</button></div>
+</section>
+<section class="card">
+<div class="top"><h2>Histórico local</h2><button class="secondary" id="export">Exportar CSV</button></div>
+<div id="history"><p class="muted">Nenhum cálculo salvo neste dispositivo.</p></div>
+<p class="muted">Os registros ficam armazenados neste navegador/dispositivo.</p>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let lastResult=null, deferredPrompt=null;
+const fmt=n=>Number(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+function pointCount(a){
+ if(!(a>0)) return 0;
+ if(a<=1)return 5;if(a<=3)return 10;if(a<=10)return 15;if(a<=30)return 20;if(a<=100)return 30;
+ return 30+10*Math.ceil((a-100)/100);
+}
+function factor(r){if(r>=25&&r<=59)return 10;if(r>=60&&r<=99)return 25;if(r>=100&&r<=149)return 40;return null}
+function renderPoints(){
+ const a=Number($('area').value),n=pointCount(a);
+ $('sampling').textContent=n?`Quantidade mínima calculada: ${n} pontos (${n*3} leituras).`:'Informe a área para calcular a quantidade mínima de pontos.';
+ if(!n){$('points').innerHTML='<p class="muted">Informe uma área válida para gerar os pontos de medição.</p>';return}
+ const old=[...document.querySelectorAll('.point')].map(row=>[...row.querySelectorAll('input')].map(i=>i.value));
+ $('points').innerHTML=Array.from({length:n},(_,i)=>`<div class="point"><b>Ponto ${i+1}</b>${[0,1,2].map(j=>`<input type="number" step="0.1" min="0" inputmode="decimal" aria-label="Ponto ${i+1}, leitura ${j+1}" placeholder="Leitura ${j+1}" value="${old[i]?.[j]||''}">`).join('')}</div>`).join('');
+}
+$('area').addEventListener('input',renderPoints);
+$('roughness').addEventListener('input',()=>{
+ const r=Number($('roughness').value), f=factor(r);
+ $('roughNotice').classList.toggle('hidden',!$('roughness').value||f!==null);
+ $('roughNotice').textContent='Rugosidade fora das faixas configuradas (25–59, 60–99 ou 100–149 µm). O FR não será atribuído automaticamente. Verifique o critério aplicável antes de concluir.';
+});
+$('calculate').onclick=()=>{
+ const area=Number($('area').value),rough=Number($('roughness').value),n=pointCount(area);
+ if(!n){alert('Informe uma área válida.');return}
+ const rows=[...document.querySelectorAll('.point')], vals=[];
+ for(let i=0;i<rows.length;i++){
+  const v=[...rows[i].querySelectorAll('input')].map(x=>x.value.trim());
+  if(v.some(x=>x==='')){alert(`Preencha as três leituras do ponto ${i+1}.`);return}
+  const nums=v.map(Number);if(nums.some(x=>!Number.isFinite(x)||x<0)){alert(`Verifique as leituras do ponto ${i+1}.`);return}
+  vals.push(nums.reduce((a,b)=>a+b,0)/3);
+ }
+ const avg=vals.reduce((a,b)=>a+b,0)/vals.length,fr=factor(rough);
+ lastResult={avg,fr,final:fr===null?null:avg-fr,pointMeans:vals};
+ $('avg').textContent=fmt(avg)+' µm';$('fr').textContent=fr===null?'Não atribuído':fr+' µm';
+ $('final').textContent=fr===null?'Pendente':fmt(avg-fr)+' µm';
+ $('resultNote').textContent=fr===null?'Não foi aplicado fator de redução. Confirme o FR aplicável; o sistema não fará atribuição automática fora das faixas definidas.':`Média geral (${fmt(avg)} µm) menos FR (${fr} µm). Sem comparação com limites mínimo/máximo.`;
+ $('resultCard').classList.remove('hidden');
+};
+$('save').onclick=()=>{
+ if(!lastResult)return;
+ const record={...lastResult,client:$('client').value,op:$('op').value,tag:$('tag').value,date:$('date').value,area:Number($('area').value),roughness:Number($('roughness').value),savedAt:new Date().toISOString()};
+ const h=JSON.parse(localStorage.getItem('ci_dft_history')||'[]');h.unshift(record);localStorage.setItem('ci_dft_history',JSON.stringify(h));renderHistory();alert('Inspeção salva neste dispositivo.');
+};
+function renderHistory(){
+ const h=JSON.parse(localStorage.getItem('ci_dft_history')||'[]');
+ $('history').innerHTML=h.length?h.map((x,i)=>`<div class="history-item"><b>${x.tag||x.op||x.client||'Inspeção sem identificação'}</b><div class="muted">${x.date||'Sem data'} · ${x.area} m² · Rugosidade ${x.roughness} µm</div><div>Média: ${fmt(x.avg)} µm · FR: ${x.fr===null?'não atribuído':x.fr+' µm'} · <b>DFT final: ${x.final===null?'pendente':fmt(x.final)+' µm'}</b></div><button class="danger" style="margin-top:7px;padding:7px 10px" onclick="removeRecord(${i})">Excluir</button></div>`).join(''):'<p class="muted">Nenhum cálculo salvo neste dispositivo.</p>';
+}
+window.removeRecord=i=>{const h=JSON.parse(localStorage.getItem('ci_dft_history')||'[]');h.splice(i,1);localStorage.setItem('ci_dft_history',JSON.stringify(h));renderHistory()};
+$('export').onclick=()=>{
+ const h=JSON.parse(localStorage.getItem('ci_dft_history')||'[]');if(!h.length){alert('Não há registros para exportar.');return}
+ const cols=['client','op','tag','date','area','roughness','avg','fr','final'];
+ const csv=[cols.join(';'),...h.map(r=>cols.map(k=>r[k]??'').join(';'))].join('\n');
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='coating-inspector-historico-dft.csv';a.click();URL.revokeObjectURL(a.href);
+};
+$('clear').onclick=()=>{if(confirm('Limpar os campos e leituras atuais?')){document.querySelectorAll('input').forEach(i=>i.value='');$('resultCard').classList.add('hidden');lastResult=null;renderPoints();$('roughNotice').classList.add('hidden')}};
+$('date').value=new Date().toISOString().slice(0,10);renderHistory();
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;$('installBtn').hidden=false});
+$('installBtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;$('installBtn').hidden=true};
+if('serviceWorker' in navigator && (location.protocol==='https:'||location.hostname==='localhost'))window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));
+</script>
+</body></html>
